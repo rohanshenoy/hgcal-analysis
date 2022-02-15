@@ -1,6 +1,5 @@
 """
 Created on Thu Apr 15 08:02:19 2021
-
 @author: Javier Duarte, Rohan Shenoy, UCSD
 """
 
@@ -21,13 +20,13 @@ from utils.wafer import plot_wafer as plotWafer
 
 from utils.metrics import emd
 
+import tensorflow as tf
+
 from tensorflow.keras.layers import Input, Dense, Flatten, Concatenate, BatchNormalization, Activation, Average, Conv2D
 from tensorflow.keras.models import Model
 from tensorflow.keras.regularizers import l1_l2
         
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
-
-from qkeras import *
 
 class pair_EMD_CNN:
     
@@ -36,7 +35,7 @@ class pair_EMD_CNN:
     
     def ittrain(self,calQ_data,num_filt, kernel_size, num_dens_neurons, num_dens_layers, num_conv_2d, num_epochs,Loss):
         
-        current_directory='/ecoderemdvol/q_pair'
+        current_directory=os.getcwd()
         
         #Arranging the hexagon
         arrange443 = np.array([0,16, 32,
@@ -103,9 +102,9 @@ class pair_EMD_CNN:
         #Number of Conv2D Layers
         for i in range(1,num_conv_2d+1):
             ind=str(i)
-            x = QConv2D(num_filt, kernel_size, strides=(1, 1), kernel_quantizer="stochastic_ternary",bias_quantizer="ternary",name='conv2d_'+ind, padding='same', kernel_regularizer=l1_l2(l1=0,l2=1e-4))(x)
-            x = QBatchNormalization(name='batchnorm_'+ind)(x)
-            x = QActivation('relu', name='relu_'+ind)(x)
+            x = Conv2D(num_filt, kernel_size, strides=(1, 1), name='conv2d_'+ind, padding='same', kernel_regularizer=l1_l2(l1=0,l2=1e-4))(x)
+            x = BatchNormalization(name='batchnorm_'+ind)(x)
+            x = Activation('relu', name='relu_'+ind)(x)
                 
         x = Flatten(name='flatten')(x)
             
@@ -113,13 +112,11 @@ class pair_EMD_CNN:
         for i in range(1,num_dens_layers+1):
             ind=str(i)
             jind=str(i+num_conv_2d)
-            x = QDense(units=num_dens_neurons, kernel_quantizer=quantized_bits(3),bias_quantizer=quantized_bits(3),kernel_regularizer=l1_l2(l1=0,l2=1e-4), name='dense_'+ind)(x)
-            x = QBatchNormalization(name='batchnorm'+jind)(x)
-            x = QActivation('relu', name='relu_'+jind)(x)
-        
-        x = QActivation("quantized_bits(20, 5)")(x)
+            x = Dense(num_dens_neurons, name='dense_'+ind, kernel_regularizer=l1_l2(l1=0,l2=1e-4))(x)
+            x = BatchNormalization(name='batchnorm'+jind)(x)
+            x = Activation('relu', name='relu_'+jind)(x)
                 
-        output = QDense(1, name='output')(x)
+        output = Dense(1, name='output')(x)
         model = Model(inputs=[input1, input2], outputs=output, name='base_model')
         model.summary()
                 
@@ -128,21 +125,23 @@ class pair_EMD_CNN:
         sym_model = Model(inputs=[input1, input2], outputs=output, name='sym_model')
         sym_model.summary()
         
-        final_directory=os.path.join(current_directory,r'q_pair_emd_models')
+        final_directory=os.path.join(current_directory,r'pair_emd_models')
         if not os.path.exists(final_directory):
             os.makedirs(final_directory)
-        callbacks = [ModelCheckpoint('/ecoderemdvol/q_pair/q_pair_emd_models/'+str(num_filt)+str(kernel_size)+str(num_dens_neurons)+str(num_dens_layers)+str(num_conv_2d)+str(num_epochs)+Loss+'best.h5', monitor='val_loss', verbose=1, save_best_only=True),
-                     ModelCheckpoint('/ecoderemdvol/q_pair/q_pair_emd_models/'+str(num_filt)+str(kernel_size)+str(num_dens_neurons)+str(num_dens_layers)+str(num_conv_2d)+str(num_epochs)+Loss+'last.h5', monitor='val_loss', verbose=1, save_last_only=True),
+        callbacks = [ModelCheckpoint('/pair_emd_models/'+str(num_filt)+str(kernel_size)+str(num_dens_neurons)+str(num_dens_layers)+str(num_conv_2d)+str(num_epochs)+Loss+'best.h5', monitor='val_loss', verbose=1, save_best_only=True),
+                     ModelCheckpoint('/pair_emd_models/'+str(num_filt)+str(kernel_size)+str(num_dens_neurons)+str(num_dens_layers)+str(num_conv_2d)+str(num_epochs)+Loss+'last.h5', monitor='val_loss', verbose=1, save_last_only=True),
                     ]
             
-        sym_model.compile(optimizer='adam', loss=Loss, metrics=['mse', 'mae', 'mape', 'msle'])
+        opt = tf.keras.optimizers.Adam(learning_rate=4e-3)
+
+        sym_model.compile(optimizer=opt, loss=Loss, metrics=['mse', 'mae', 'mape', 'msle'])
         history = sym_model.fit((X1_train, X2_train), y_train, 
                             validation_data=((X1_val, X2_val), y_val),
-                            epochs=num_epochs, verbose=1, batch_size=32, callbacks=callbacks)
+                            epochs=num_epochs, verbose=1, batch_size=128, callbacks=callbacks)
         
         #Making directory for graphs
         
-        img_directory=os.path.join(current_directory,r'Q Pair EMD Plots')
+        img_directory=os.path.join(current_directory,r'Pair EMD Plots')
         if not os.path.exists(img_directory):
             os.makedirs(img_directory)
         
@@ -162,8 +161,8 @@ class pair_EMD_CNN:
         plt.close()
         y_val_preds = sym_model.predict((X1_val, X2_val))
         fig=plt.figure()
-        fig=plt.hist(y_val, alpha=0.5, bins=np.arange(0, 7.5, 0.01), label='TrueEMD')
-        fig=plt.hist(y_val_preds, alpha=0.5, bins=np.arange(0, 7.5, 0.01), label='EMDCNN')
+        fig=plt.hist(y_val, alpha=0.5, bins=np.arange(0, 15, 0.01), label='TrueEMD')
+        fig=plt.hist(y_val_preds, alpha=0.5, bins=np.arange(0, 15, 0.01), label='EMDCNN')
         fig=plt.xlabel('EMD [GeV]')
         fig=plt.ylabel('Samples')
         fig=plt.legend()
@@ -186,8 +185,8 @@ class pair_EMD_CNN:
         
         plt.close()
         fig, ax = plt.subplots(figsize =(5, 5)) 
-        x_bins = np.arange(0, 7.5, 0.01)
-        y_bins = np.arange(0, 7.5, 0.01)
+        x_bins = np.arange(0, 15, 0.01)
+        y_bins = np.arange(0, 15, 0.01)
         plt.hist2d(y_val.flatten(), y_val_preds.flatten(), bins=[x_bins,y_bins])
         plt.plot([0, 15], [0, 15], color='gray', alpha=0.5)
         ax.set_xlabel('True EMD [GeV]')
@@ -196,4 +195,3 @@ class pair_EMD_CNN:
         plt.close()
         
         return(np.mean(rel_diff),np.std(rel_diff))
-    
