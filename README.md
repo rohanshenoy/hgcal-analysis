@@ -31,9 +31,6 @@ mkdir data/
 scp -r cmslpc-sl7.fnal.gov:/eos/uscms/store/user/lpchgcal/ConcentratorNtuples/L1THGCal_Ntuples/TTbar_v11/
 ```
 
-or you can find the csv files here: https://emdhgcalae.nrp-nautilus.io/HGCal22Data_signal_driven_ttbar_v11/
-
-
 ## Training emd_loss approximation using CNNs
 
 You can train CNN(s) on the dataset(s) to obtain a differentiable approximation of the EMD
